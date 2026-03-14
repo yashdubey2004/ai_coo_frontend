@@ -26,10 +26,8 @@ export default function AICOOApp() {
   const [isAsking, setIsAsking] = useState(false);
   const [answerScript, setAnswerScript] = useState("");
   const [answerAudio, setAnswerAudio] = useState("");
-
   const [mathData, setMathData] = useState("");
   const [showMath, setShowMath] = useState(false);
-
   const [isScanning, setIsScanning] = useState(false);
   const [alertScript, setAlertScript] = useState("");
   const [alertAudio, setAlertAudio] = useState("");
