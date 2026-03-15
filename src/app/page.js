@@ -46,8 +46,16 @@ export default function AICOOApp() {
   // ==========================================
   const [currentTime, setCurrentTime] = useState("");
   const [scrolled, setScrolled] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [greeting, setGreeting] = useState("Welcome");
+  const [year, setYear] = useState("");
 
   useEffect(() => {
+    setMounted(true);
+    const hour = new Date().getHours();
+    setGreeting(hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening");
+    setYear(new Date().getFullYear().toString());
+
     const updateTime = () => {
       setCurrentTime(new Date().toLocaleString("en-US", {
         weekday: "long", year: "numeric", month: "long", day: "numeric",
@@ -94,7 +102,7 @@ export default function AICOOApp() {
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const res = await fetch("http://localhost:8000/upload-file", { method: "POST", body: formData });
+      const res = await fetch("http://localhost:9000/upload-file", { method: "POST", body: formData });
       const data = await res.json();
       setUploadStatus(data.message || data.error);
     } catch (err) {
@@ -106,7 +114,7 @@ export default function AICOOApp() {
     if (!postgresUrl) return;
     setUploadStatus("Syncing with PostgreSQL...");
     try {
-      const res = await fetch("http://localhost:8000/sync-postgres", {
+      const res = await fetch("http://localhost:9000/sync-postgres", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ db_url: postgresUrl }),
@@ -118,18 +126,33 @@ export default function AICOOApp() {
     }
   };
 
+  const handleSlackSync = async () => {
+    setUploadStatus("Fetching Slack messages...");
+    try {
+      const res = await fetch("http://localhost:9000/sync-slack", { method: "POST" });
+      const data = await res.json();
+      setUploadStatus(data.message || data.error);
+    } catch (e) {
+      setUploadStatus("Slack sync failed.");
+    }
+  };
+
   const handleGeneratePodcast = async () => {
     setIsPodcastLoading(true);
     try {
-      const res = await fetch("http://localhost:8000/generate-podcast", {
+      const res = await fetch("http://localhost:9000/generate-podcast", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ extra_context: "" }),
       });
       const data = await res.json();
-      setPodcastScript(data.script);
-      setPodcastAudio("http://localhost:8000/play-podcast?t=" + Date.now());
-      setPodcastCount((c) => c + 1);
+      if (data.error) {
+        setPodcastScript("Error: " + data.error);
+      } else {
+        setPodcastScript(data.script);
+        setPodcastAudio("http://localhost:9000/play-podcast?t=" + Date.now());
+        setPodcastCount((c) => c + 1);
+      }
     } finally {
       setIsPodcastLoading(false);
     }
@@ -140,16 +163,20 @@ export default function AICOOApp() {
     setIsAsking(true);
     setShowMath(false);
     try {
-      const res = await fetch("http://localhost:8000/ask-coo", {
+      const res = await fetch("http://localhost:9000/ask-coo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question }),
       });
       const data = await res.json();
-      setAnswerScript(data.answer);
-      setMathData(data.math_used);
-      setAnswerAudio("http://localhost:8000/play-answer?t=" + Date.now());
-      setQueriesCount((c) => c + 1);
+      if (data.error) {
+        setAnswerScript("Error: " + data.error);
+      } else {
+        setAnswerScript(data.answer);
+        setMathData(data.math_used);
+        setAnswerAudio("http://localhost:9000/play-answer?t=" + Date.now());
+        setQueriesCount((c) => c + 1);
+      }
     } finally {
       setIsAsking(false);
     }
@@ -160,15 +187,28 @@ export default function AICOOApp() {
     setAlertScript("");
     setAlertAudio("");
     try {
-      const res = await fetch("http://localhost:8000/risk-radar", { method: "POST" });
+      const res = await fetch("http://localhost:9000/risk-radar", { method: "POST" });
       const data = await res.json();
-      setAlertScript(data.alert_script);
-      setAlertAudio("http://localhost:8000/play-alert?t=" + Date.now());
-      setRiskScans((c) => c + 1);
+      if (data.error) {
+        setAlertScript("Error: " + data.error);
+      } else {
+        setAlertScript(data.alert_script);
+        setAlertAudio("http://localhost:9000/play-alert?t=" + Date.now());
+        setRiskScans((c) => c + 1);
+      }
     } finally {
       setIsScanning(false);
     }
   };
+
+  // ==========================================
+  // WAIT FOR CLIENT MOUNT (prevents hydration mismatch)
+  // ==========================================
+  if (!mounted) {
+    return (
+      <div style={{ minHeight: "100vh", background: "#0b0f1a" }} />
+    );
+  }
 
   // ==========================================
   // LOGIN SCREEN
@@ -310,7 +350,7 @@ export default function AICOOApp() {
             <div>
               <p className="text-slate-400 text-sm mb-1">{currentTime}</p>
               <h1 className="text-3xl sm:text-4xl font-bold text-white">
-                Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"}, {userName}
+                {greeting}, {userName}
               </h1>
               <p className="text-slate-400 mt-1">Your enterprise intelligence dashboard is ready.</p>
             </div>
@@ -326,7 +366,7 @@ export default function AICOOApp() {
           {/* KPI CARDS */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 stagger">
             {[
-              { label: "Active Data Sources", value: "2", icon: "📊", accent: "emerald", sub: "Snowflake + Postgres" },
+              { label: "Active Data Sources", value: "3", icon: "📊", accent: "emerald", sub: "Snowflake + Postgres + Slack" },
               { label: "AI Queries", value: queriesCount, icon: "⚡", accent: "cyan", sub: "War Room Sessions" },
               { label: "Podcast Episodes", value: podcastCount, icon: "🎙️", accent: "blue", sub: "Generated Briefings" },
               { label: "Risk Scans", value: riskScans, icon: "🛡️", accent: "red", sub: "Threat Analyses" },
@@ -382,7 +422,7 @@ export default function AICOOApp() {
             </div>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-4">
+          <div className="grid md:grid-cols-3 gap-4">
             {/* File Upload Card */}
             <div className="glass-card p-6">
               <h3 className="text-sm font-semibold text-slate-300 mb-1">Local File Upload</h3>
@@ -422,6 +462,24 @@ export default function AICOOApp() {
                   className="w-full py-2.5 text-sm font-semibold bg-violet-600/80 hover:bg-violet-600 text-white rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                 >
                   Sync Database
+                </button>
+              </div>
+            </div>
+
+            {/* Slack Sync Card */}
+            <div className="glass-card p-6">
+              <h3 className="text-sm font-semibold text-slate-300 mb-1">Slack Integration</h3>
+              <p className="text-xs text-slate-500 mb-4">Pull team messages into AI knowledge base</p>
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-900/60 border border-slate-700/50 rounded-xl">
+                  <span className="text-lg">💬</span>
+                  <span className="text-sm text-slate-400">Connected to Slack workspace</span>
+                </div>
+                <button
+                  onClick={handleSlackSync}
+                  className="w-full py-2.5 text-sm font-semibold bg-green-600/80 hover:bg-green-600 text-white rounded-xl transition-all"
+                >
+                  Sync Slack Messages
                 </button>
               </div>
             </div>
@@ -577,7 +635,7 @@ export default function AICOOApp() {
             Powered by Gemini AI &middot; Snowflake &middot; ElevenLabs &middot; Next.js
           </p>
           <p className="text-xs text-slate-600 mt-1">
-            &copy; {new Date().getFullYear()} AI COO. Enterprise Intelligence Engine.
+            &copy; {year} AI COO. Enterprise Intelligence Engine.
           </p>
         </footer>
 
